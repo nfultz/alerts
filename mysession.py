@@ -9,6 +9,8 @@ import urllib
 
 with open("Google_Alert_-_Daily_Digest_3.eml") as f:
     p = email.message_from_file(f, policy=email.policy.SMTPUTF8)
+
+frm, subj = p.get("From"), p.get("Subject")
     
 e = p.get_body("html")
 html = e.get_payload(decode=True)
@@ -17,7 +19,7 @@ with open('em.html', 'wb') as f: f.write(html )
 soup = bs4.BeautifulSoup(html, 'html.parser')
 
 
-items = [(tr.div.a, tr.div.div.div) for tr in soup.find_all("tr") if tr.get('itemtype') == "http://schema.org/Article" and tr.div.a ]
+items = [(tr.div.a, tr.div.div.div) for tr in soup.find_all("tr", itemtype="http://schema.org/Article") if tr.div.a ]
 
 
 for link, desc in items:
@@ -55,6 +57,8 @@ body > div {
 <h1>neal.news</h1>
 </body>
 </html>""")
+
+#clean = bs4.BeautifulSoup(requests.get("http://neal.news").content)
 
 # Inline date
 d = p.get("Date")
