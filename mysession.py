@@ -1,4 +1,5 @@
 # coding: utf-8
+import datetime
 import email
 import email.policy
 with open("Google_Alert_-_Daily_Digest_1.eml") as f:
@@ -32,7 +33,6 @@ clean = bs4.BeautifulSoup("""
 <head>
 <meta charset='UTF-8'/>
 <title></title>
-<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
 <style>
 body {
     max-width: 50rem;
@@ -48,7 +48,7 @@ body > div {
 <h1>neal.news</h1>
 <h3></h3>
 </body>
-</html>""", 'lxml')
+</html>""")
 
 for i in items:
     clean.append(i[1])
@@ -61,3 +61,9 @@ clean.head.title.string = "neal.news / " + d
 clean.body.h3.string = d
 
 with open("index.html", 'w') as f: f.write(clean.prettify())
+
+import boto3
+
+# Method 2: Client.put_object()
+client = boto3.client('s3')
+client.put_object(Body=clean.prettify(), Bucket='www.neal.news', Key='index.html', ContentType='text/html')
