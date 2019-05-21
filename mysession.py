@@ -4,8 +4,13 @@ import bs4
 import datetime
 import email, email.policy
 import gzip
+import io
 import uuid
 import urllib
+
+BUCKET = 'www.neal.news'
+
+INCOMING = 'neal.news.testing'
 
 def parse_email(f):
     p = email.message_from_file(f, policy=email.policy.SMTPUTF8)
@@ -109,16 +114,16 @@ def update_s3(clean, old):
     # Method 2: Client.put_object()
     client = boto3.client('s3')
     client.copy_object(
-            CopySource={'Bucket': 'www.neal.news',
+            CopySource={'Bucket': BUCKET,
                            'Key': 'index.html'},
-            Bucket='www.neal.news',
+            Bucket=BUCKET,
             Key=old,
             ContentType='text/html',
             ContentEncoding='gzip' )
 
     client.put_object(
             Body=gzip.compress(str(clean).encode('UTF-8')),
-            Bucket='www.neal.news',
+            Bucket=BUCKET,
             Key='index.html',
             ContentType='text/html',
             ContentEncoding='gzip' )
@@ -130,6 +135,14 @@ def build_page(f):
 
 
 def lambda_handler(event, context):
+    print(event)
+    ses =  event['Records'][0]['ses'];
+    id =  ses['mail']['messageId']
+
+    client = boto3.client('s3')
+    obj = client.get_object(Bucket=INCOMING, Key=id)
+    f = io.StringIO(obj['Body'].read().decode('utf-8'))
+
     clean, yesterday = build_page(f)
     update_s3(clean, yesterday_href)
 
