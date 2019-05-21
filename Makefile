@@ -4,12 +4,12 @@ export AWS_DEFAULT_REGION = us-east-1
 
 install : news-lambda.zip
 	aws lambda delete-function --function-name neal_news_lambda || true
-	aws lambda create-function --function-name neal_news_lambda \
-		                       --runtime python3.6 \
-							   --handler neal_news.lambda_handler \
-							   --timeout 30
-							   --role arn:aws:iam::887983324737:role/neal_news_lambda_permission \
-							   --zip-file fileb://./$<
+	aws lambda create-function --function-name neal_news_lambda                                  \
+	                           --runtime python3.6                                               \
+	                           --handler neal_news.lambda_handler                                \
+	                           --timeout 30                                                      \
+	                           --role arn:aws:iam::887983324737:role/neal_news_lambda_permission \
+	                           --zip-file fileb://./$<
 	echo "Don't forget to update SES to use new lambda"
 
 %/ :
