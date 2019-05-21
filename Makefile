@@ -6,7 +6,7 @@ install : news-lambda.zip
 	aws lambda delete-function --function-name neal_news_lambda || true
 	aws lambda create-function --function-name neal_news_lambda \
 		                       --runtime python3.6 \
-							   --handler lambda_handler \
+							   --handler neal_news.lambda_handler \
 							   --role arn:aws:iam::887983324737:role/neal_news_lambda_permission \
 							   --zip-file fileb://./$<
 	echo "Don't forget to update SES to use new lambda"
@@ -14,7 +14,7 @@ install : news-lambda.zip
 %/ :
 	pip3 install --system $* -t .
 
-news-lambda.zip : lambda_handler.py bs4/ soupsieve/
+news-lambda.zip : neal_news.py bs4/ soupsieve/
 	zip -r $@ $?
 
 clean :
