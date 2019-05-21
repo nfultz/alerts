@@ -13,13 +13,14 @@ BUCKET = 'www.neal.news'
 INCOMING = 'neal.news.testing'
 
 def parse_email(f):
+    print("parse_email")
     p = email.message_from_file(f, policy=email.policy.SMTPUTF8)
 
     frm, subj = p.get("From"), p.get("Subject")
         
     e = p.get_body("html")
     html = e.get_payload(decode=True)
-    with open('em.html', 'wb') as f: f.write(html )
+    #with open('em.html', 'wb') as f: f.write(html )
 
     # Inline date
     d = p.get("Date")
@@ -35,6 +36,7 @@ def unwrap_link(link):
 
 
 def extract_items(soup):
+    print("extract_items")
 
     items = [(tr.div.a, tr.div.div.div) for tr in soup.find_all("tr", itemtype="http://schema.org/Article") if tr.div.a ]
 
@@ -64,6 +66,7 @@ def extract_items(soup):
         
 
 def build_new_index(items, d):
+    print("build_new_index")
 
     clean = bs4.BeautifulSoup("""
     <!doctype html>
@@ -107,12 +110,11 @@ def build_new_index(items, d):
     return clean, yesterday['href']
 
 
-#with open("index.html", 'w') as f: f.write(str(clean))
-
-
 def update_s3(clean, old):
+    print("update_s3")
     # Method 2: Client.put_object()
     client = boto3.client('s3')
+    print("update_s3.rotate")
     client.copy_object(
             CopySource={'Bucket': BUCKET,
                            'Key': 'index.html'},
@@ -121,6 +123,7 @@ def update_s3(clean, old):
             ContentType='text/html',
             ContentEncoding='gzip' )
 
+    print("update_s3.refresh")
     client.put_object(
             Body=gzip.compress(str(clean).encode('UTF-8')),
             Bucket=BUCKET,
@@ -134,16 +137,21 @@ def build_page(f):
     return build_new_index(items, d)
 
 
-def lambda_handler(event, context):
-    print(event)
-    ses =  event['Records'][0]['ses'];
-    id =  ses['mail']['messageId']
-
+def fetch_s3(id):
+    print("fetch_s3")
     client = boto3.client('s3')
     obj = client.get_object(Bucket=INCOMING, Key=id)
     f = io.StringIO(obj['Body'].read().decode('utf-8'))
+    return f
 
-    clean, yesterday = build_page(f)
+def lambda_handler(event, context):
+    ses =  event['Records'][0]['ses'];
+    print(f"handling {ses['mail']}")
+    id =  ses['mail']['messageId']
+    print(f"handling {id}")
+
+    f = fetch_s3(id)
+    clean, yesterday_href = build_page(f)
     update_s3(clean, yesterday_href)
 
 if __name__ == '__main__' :
