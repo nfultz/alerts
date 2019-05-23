@@ -1,6 +1,9 @@
-.PHONY = install clean
+.PHONY = manual install clean
 
 export AWS_DEFAULT_REGION = us-east-1
+
+manual :
+	./neal_news.py Google_Alert_-_Daily_Digest_21.eml
 
 install : news-lambda.zip
 	aws lambda delete-function --function-name neal_news_lambda || true

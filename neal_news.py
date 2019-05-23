@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # coding: utf-8
 import boto3
 import bs4
@@ -12,7 +13,7 @@ BUCKET = 'www.neal.news'
 
 INCOMING = 'neal.news.testing'
 
-def parse_email(f):
+def parse_email(f,dump=False):
     print("parse_email")
     p = email.message_from_file(f, policy=email.policy.SMTPUTF8)
 
@@ -20,7 +21,10 @@ def parse_email(f):
         
     e = p.get_body("html")
     html = e.get_payload(decode=True)
-    #with open('em.html', 'wb') as f: f.write(html )
+
+    if dump:
+        with open('em.html', 'wb') as f:
+            f.write(html)
 
     # Inline date
     d = p.get("Date")
@@ -32,8 +36,7 @@ def parse_email(f):
 def unwrap_link(link):
     url = urllib.parse.urlparse(link)
     queries = urllib.parse.parse_qs(url.query)
-    return {"href":  queries['url'][0] }
-
+    return {"href":  queries['url'][0], "target":"_blank" }
 
 def extract_items(soup):
     print("extract_items")
@@ -131,10 +134,6 @@ def update_s3(clean, old):
             ContentType='text/html',
             ContentEncoding='gzip' )
 
-def build_page(f):
-    soup, d = parse_email(f)
-    items = extract_items(soup)
-    return build_new_index(items, d)
 
 
 def fetch_s3(id):
@@ -150,13 +149,17 @@ def lambda_handler(event, context):
     id =  ses['mail']['messageId']
     print(f"handling {id}")
 
-    f = fetch_s3(id)
-    clean, yesterday_href = build_page(f)
+    f = fetch_s3("alerts/"+id)
+    soup, d = parse_email(f)
+    items = extract_items(soup)
+    clean, yesterday_href = build_new_index(items, d)
     update_s3(clean, yesterday_href)
 
 if __name__ == '__main__' :
     import sys
     with open(sys.argv[1]) as f:
-        clean, _ = build_page(f)
+        soup, d = parse_email(f, True)
+    items = extract_items(soup)
+    clean, yesterday_href = build_new_index(items, d)
     with open('index.html', 'w') as f:
         f.write(str(clean))
