@@ -6,7 +6,6 @@ import datetime
 import email, email.policy
 import gzip
 import io
-import uuid
 import urllib
 
 BUCKET = 'www.neal.news'
@@ -17,21 +16,20 @@ def parse_email(f,dump=False):
     print("parse_email")
     p = email.message_from_file(f, policy=email.policy.SMTPUTF8)
 
-    frm, subj = p.get("From"), p.get("Subject")
+    frm, subj, dt = p.get("From"), p.get("Subject"), p.get("Date")
         
-    e = p.get_body("html")
-    html = e.get_payload(decode=True)
+    body = p.get_body("html")
+    html = body.get_payload(decode=True)
 
     if dump:
         with open('em.html', 'wb') as f:
             f.write(html)
 
     # Inline date
-    d = p.get("Date")
-    d = datetime.datetime.strptime(d, "%a, %d %b %Y %H:%M:%S %z")
-    d = d.strftime('%b %d, %Y')
+    dt = datetime.datetime.strptime(dt, "%a, %d %b %Y %H:%M:%S %z")
+    dt = dt.strftime('%b %d, %Y')
 
-    return bs4.BeautifulSoup(html, 'html.parser'), d
+    return bs4.BeautifulSoup(html, 'html.parser'), dt
 
 def unwrap_link(link):
     url = urllib.parse.urlparse(link)
@@ -68,65 +66,65 @@ def extract_items(soup):
     return items
         
 
-def build_new_index(items, d):
+def build_new_index(items, d, yesterday_href):
     print("build_new_index")
 
-    clean = bs4.BeautifulSoup("""
+    template = """
     <!doctype html>
     <html>
     <head>
     <meta charset='UTF-8'/>
-    <title></title>
+    <title>neal.news / {d}</title>
     <style>
-    body {
+    body {{
         max-width: 50rem;
         padding: 2rem;
         margin: auto;
-        }
-    body > div {
+        }}
+    body > div {{
         margin: 1em
-        }
+        }}
+    a {{
+        text-decoration: none
+        }}
     </style>
     </head>
     <body>
     <h1>neal.news</h1>
+    <h3>{d}</h3>
+    <a href="{yesterday_href}">yesterday's news</a>
     </body>
     </html>
-    """, 'html.parser')
+    """
 
-    #clean = bs4.BeautifulSoup(requests.get("http://neal.news").content)
+    template = template.format(d=d, yesterday_href=yesterday_href)
 
+    clean = bs4.BeautifulSoup(template, 'html.parser')
 
-    clean.head.title.string = "neal.news / " + d
-
-    h3 = clean.new_tag("h3")
-    h3.string = d
-
-    yesterday = clean.new_tag("a", href = "%s.html" % uuid.uuid1())
-    yesterday.string = "yesterday's news"
-
-    succ = clean.body.h1
-    for i in [h3, *items, yesterday]:
+    succ = clean.body.h3
+    for i in items:
       succ.insert_after(i)
       succ = i
 
-    return clean, yesterday['href']
+    return clean
 
 
-def update_s3(clean, old):
-    print("update_s3")
+def update_yesterday(client):
+    print("update_yesterday")
     # Method 2: Client.put_object()
-    client = boto3.client('s3')
-    print("update_s3.rotate")
+    id = client.head_object(Bucket=BUCKET, Key='index.html')['ETag'][1:-1]
+    yesterday_href = "%s.html" % id
     client.copy_object(
             CopySource={'Bucket': BUCKET,
                            'Key': 'index.html'},
             Bucket=BUCKET,
-            Key=old,
+            Key=yesterday_href,
             ContentType='text/html',
             ContentEncoding='gzip' )
+    return yesterday_href
 
-    print("update_s3.refresh")
+def update_index(client, clean):
+    print("update_index")
     client.put_object(
             Body=gzip.compress(str(clean).encode('UTF-8')),
             Bucket=BUCKET,
@@ -136,30 +134,34 @@ def update_s3(clean, old):
 
 
 
-def fetch_s3(id):
+def fetch_s3(client, id):
     print("fetch_s3")
-    client = boto3.client('s3')
     obj = client.get_object(Bucket=INCOMING, Key=id)
     f = io.StringIO(obj['Body'].read().decode('utf-8'))
     return f
 
 def lambda_handler(event, context):
+    client = boto3.client('s3')
+
     ses =  event['Records'][0]['ses'];
     print(f"handling {ses['mail']}")
     id =  ses['mail']['messageId']
     print(f"handling {id}")
 
-    f = fetch_s3("alerts/"+id)
-    soup, d = parse_email(f)
+    yesterday_href = update_yesterday(client)
+
+    f = fetch_s3(client, "alerts/"+id)
+    soup, dt = parse_email(f)
     items = extract_items(soup)
-    clean, yesterday_href = build_new_index(items, d)
-    update_s3(clean, yesterday_href)
+    clean = build_new_index(items, dt, yesterday_href)
+
+    update_index(client, clean)
 
 if __name__ == '__main__' :
     import sys
     with open(sys.argv[1]) as f:
         soup, d = parse_email(f, True)
     items = extract_items(soup)
-    clean, yesterday_href = build_new_index(items, d)
+    clean = build_new_index(items, d, "#not_implemented")
     with open('index.html', 'w') as f:
         f.write(str(clean))
