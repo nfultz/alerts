@@ -36,40 +36,42 @@ def unwrap_link(link):
     queries = urllib.parse.parse_qs(url.query)
     return {"href":  queries['url'][0], "target":"_blank" }
 
+def clean_item(item):
+    link, desc = item
+    link.attrs = unwrap_link(link['href'])
+    link.span.unwrap()
+    if link.contents[0]  == ' ':
+        del link.contents[0]
+    if link.contents[-1] == ' ':
+        del link.contents[-1]
+
+    #change publisher div to em
+    desc.div.a.span.unwrap()
+    desc.div.a.unwrap()
+    if desc.div.string:
+        desc.div.string = desc.div.string.strip()
+    desc.div.name = 'em'
+
+    # strip all formatting
+    desc.attrs = {}
+    for t in desc.descendants: t.attrs = {}
+
+    desc.insert(0, link)
+    return desc
+
+
 def extract_items(soup):
     print("extract_items")
 
-    items = [(tr.div.a, tr.div.div.div) for tr in soup.find_all("tr", itemtype="http://schema.org/Article") if tr.div.a ]
-
-
-    for i, item in enumerate(items):
-        link, desc = item
-        link.attrs = unwrap_link(link['href'])
-        link.span.unwrap()
-        if link.contents[0]  == ' ':
-            del link.contents[0]
-        if link.contents[-1] == ' ':
-            del link.contents[-1]
-
-        #change publisher div to em
-        desc.div.a.span.unwrap()
-        desc.div.a.unwrap()
-        desc.div.name = 'em'
-
-        # strip all formatting
-        desc.attrs = {}
-        for t in desc.descendants: t.attrs = {}
-
-        desc.insert(0, link)
-        items[i] = desc
-
-    return items
-        
+    return map(clean_item,
+               ((tr.div.a, tr.div.div.div)
+                   for tr in soup.find_all("tr", itemtype="http://schema.org/Article")
+                   if tr.div.a))
 
 def build_new_index(items, d, yesterday_href):
     print("build_new_index")
 
-    template = """
+    return f"""
     <!doctype html>
     <html>
     <head>
@@ -92,22 +94,11 @@ def build_new_index(items, d, yesterday_href):
     <body>
     <h1>neal.news</h1>
     <h3>{d}</h3>
+    {"".join(map(str, items))}
     <a href="{yesterday_href}">yesterday's news</a>
     </body>
     </html>
     """
-
-    template = template.format(d=d, yesterday_href=yesterday_href)
-
-    clean = bs4.BeautifulSoup(template, 'html.parser')
-
-    succ = clean.body.h3
-    for i in items:
-      succ.insert_after(i)
-      succ = i
-
-    return clean
-
 
 def update_yesterday(client):
     print("update_yesterday")
