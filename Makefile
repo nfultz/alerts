@@ -6,8 +6,8 @@ manual :
 	./neal_news.py Google_Alert_-_Daily_Digest_21.eml
 
 update : news-lambda.zip
-	aws lambda update-function --function-name neal_news_lambda                                  \
-	                           --zip-file fileb://./$<
+	aws lambda update-function-code --function-name neal_news_lambda                                  \
+	                                --zip-file fileb://./$<
 
 install : news-lambda.zip
 	aws lambda delete-function --function-name neal_news_lambda || true

@@ -29,6 +29,7 @@ def parse_email(f,dump=False):
     dt = datetime.datetime.strptime(dt, "%a, %d %b %Y %H:%M:%S %z")
     dt = dt.strftime('%b %d, %Y')
 
+    print("parse_email.bs4")
     return bs4.BeautifulSoup(html, 'html.parser'), dt
 
 def unwrap_link(link):
@@ -96,6 +97,16 @@ def build_new_index(items, d, yesterday_href):
     <h3>{d}</h3>
     {"".join(map(str, items))}
     <a href="{yesterday_href}">yesterday's news</a>
+    <script>
+    document.onclick = function(e) {{
+        a = e.path.find((x) => x.href)
+        if(!a) return;
+        req = new XMLHttpRequest();
+        req.open("POST", "https://jt5a7bev0m.execute-api.us-east-1.amazonaws.com/beta/")
+        req.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        req.send(a.href)
+    }}
+    </script>
     </body>
     </html>
     """
