@@ -71,6 +71,7 @@ def extract_items(soup):
 
 def build_new_index(items, d, yesterday_href):
     print("build_new_index")
+    items = "\n    ".join(map(str, items))
 
     return f"""
     <!doctype html>
@@ -95,7 +96,7 @@ def build_new_index(items, d, yesterday_href):
     <body>
     <h1>neal.news</h1>
     <h3>{d}</h3>
-    {"".join(map(str, items))}
+    {items}
     <a href="{yesterday_href}">yesterday's news</a>
     <script>
     document.onclick = function(e) {{
