@@ -58,16 +58,31 @@ def clean_item(item):
     for t in desc.descendants: t.attrs = {}
 
     desc.insert(0, link)
-    return desc
+    return link.attrs["href"], desc
 
 
 def extract_items(soup):
     print("extract_items")
 
-    return map(clean_item,
+    items = map(clean_item,
                ((tr.div.a, tr.div.div.div)
                    for tr in soup.find_all("tr", itemtype="http://schema.org/Article")
                    if tr.div.a))
+
+    uniq_href = set()
+    uniq = []
+
+    for i, item in enumerate(items):
+        href, item = item
+        if href not in uniq_href:
+            uniq_href.add(href)
+            uniq.append(item)
+
+#    print(uniq_href)
+
+    print(f"{i+1} items, {len(uniq)} unique")
+
+    return uniq
 
 def build_new_index(items, d, yesterday_href):
     print("build_new_index")
