@@ -49,8 +49,9 @@ def clean_item(item):
     #change publisher div to em
     desc.div.a.span.unwrap()
     desc.div.a.unwrap()
-    if desc.div.string:
-        desc.div.string = desc.div.string.strip()
+    text = "".join(desc.div.contents).strip()
+    desc.div.clear()
+    desc.div.string = text
     desc.div.name = 'em'
 
     # strip all formatting
