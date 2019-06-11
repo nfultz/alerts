@@ -24,26 +24,28 @@ def get_logs():
     print(start)
 
     status = 'Init'
-    import pprint
     while status not in ('Complete', 'Failed','Cancelled', 'Timeout'):
-        time.sleep(10)
+        time.sleep(15)
         results = client.get_query_results(queryId=start['queryId'])
         status = results['status']
 
 
-    clicks = collections.defaultdict(dict)
+    first_ts = '2999'
+    clicks = set()
     for i, record in enumerate(results['results']):
-        for field in record:
-            clicks[i][field['field']] = field['value']
-        clicks[i] = clicks[i]['message'][len[MSG_PREFIX):]
+        x = {field['field'] : field['value'] for field in record}
+        first_ts = min(first_ts, x['@timestamp'])
+        clicks.add(x['@message'][len(MSG_PREFIX):])
     
-    print(pprint.pprint(clicks))
-
+    first_ts = datetime.datetime.strptime(first_ts, "%Y-%m-%d %H:%M:%S.%f")
+    return clicks, first_ts
 
 
 
 def main(args):
-    get_logs()
+    clicks, first_ts =  get_logs()
+    print(clicks)
+    print(first_ts)
 
 if __name__ == "__main__":
     import sys
