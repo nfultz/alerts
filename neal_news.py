@@ -12,6 +12,10 @@ BUCKET = 'www.neal.news'
 
 INCOMING = 'neal.news.testing'
 
+PAYWALLED = {
+        'wsj.com'
+        }
+
 def parse_email(f,dump=False):
     print("parse_email")
     p = email.message_from_file(f, policy=email.policy.SMTPUTF8)
@@ -59,6 +63,11 @@ def clean_item(item):
     for t in desc.descendants: t.attrs = {}
 
     desc.insert(0, link)
+
+    for site in PAYWALLED:
+        if site in link.attrs["href"]:
+            desc.attrs["class"] = "paywall"
+
     return link.attrs["href"], desc
 
 
