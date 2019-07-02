@@ -13,7 +13,10 @@ BUCKET = 'www.neal.news'
 INCOMING = 'neal.news.testing'
 
 PAYWALLED = {
-        'wsj.com'
+        'wsj.com',
+        'thetimes.co.uk',
+        'straitstimes.com',
+        'heraldscotland.com'
         }
 
 def parse_email(f,dump=False):
