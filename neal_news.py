@@ -123,6 +123,9 @@ def build_new_index(items, d, yesterday_href):
     a {{
         text-decoration: none
         }}
+    div.paywall > em:after {{
+        content: '🔒'
+        }}
     </style>
     </head>
     <body>
