@@ -6,6 +6,7 @@ import datetime
 import email, email.policy
 import gzip
 import io
+import re
 import urllib
 
 BUCKET = 'www.neal.news'
@@ -16,7 +17,8 @@ PAYWALLED = {
         'wsj.com',
         'thetimes.co.uk',
         'straitstimes.com',
-        'heraldscotland.com'
+        'heraldscotland.com',
+        'americansongwriter.com'
         }
 
 def parse_email(f,dump=False):
@@ -87,6 +89,8 @@ def extract_items(soup):
 
     for i, item in enumerate(items):
         href, item = item
+        # removing protocol portion to eliminated dupe of http + https
+        href = re.sub('^https?://', '', href)
         if href not in uniq_href:
             uniq_href.add(href)
             uniq.append(item)
