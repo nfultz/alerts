@@ -14,6 +14,7 @@ BUCKET = 'www.neal.news'
 INCOMING = 'neal.news.testing'
 
 PAYWALLED = {
+        'ft.com',
         'wsj.com',
         'thetimes.co.uk',
         'straitstimes.com',
