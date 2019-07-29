@@ -20,7 +20,8 @@ PAYWALLED = {
         'straitstimes.com',
         'heraldscotland.com',
         'americansongwriter.com',
-        'www.theday.com'
+        'www.theday.com',
+        'www.independent.ie'
         }
 
 def parse_email(f,dump=False):
