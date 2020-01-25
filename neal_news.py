@@ -21,7 +21,13 @@ PAYWALLED = {
         'heraldscotland.com',
         'americansongwriter.com',
         'www.theday.com',
-        'www.independent.ie'
+        'www.independent.ie',
+        'news.bloomberglaw.com'
+        }
+
+SPAM = {
+        'insiderfinancial.net',
+        'wellstonjournal.com'
         }
 
 def parse_email(f,dump=False):
