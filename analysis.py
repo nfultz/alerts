@@ -194,10 +194,10 @@ def train(time_allowed=30, trials=None) :
     from hyperopt.fmin import fmin
     
     Y, *R = get_files()
-    X = gen_features(*R)
+    X, tf, u = gen_features(*R)
     del R
     
-    dtrain = xgb.DMatrix(X[0], Y)
+    dtrain = xgb.DMatrix(X, Y)
     
     if trials is None:
         trials = Trials()
@@ -235,7 +235,7 @@ def train(time_allowed=30, trials=None) :
                 space=space,
                 algo=tpe.suggest,
                 trials=trials,
-                max_evals=len(t.trials) + 20)
+                max_evals=len(trials.trials) + 20)
 
     param.update(best)
     param['max_depth'] = int(param['max_depth']) #fixme
@@ -244,7 +244,7 @@ def train(time_allowed=30, trials=None) :
     result = xgb.cv(param, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=0)
 
     
-    return result, param, trials
+    return result, param, trials, tf, u
     
     
     
