@@ -5,8 +5,12 @@ import collections
 import datetime
 import io
 import gzip
+import pickle
 import time
 import re
+
+import neal_news
+
 
 MSG_PREFIX = '(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) Method request body before transformations: '
 BUCKET = 'www.neal.news'
@@ -53,7 +57,7 @@ def get_docs_keys(client, oldest):
         if i['LastModified'] > oldest:
             yield i['Key']
 
-
+# Different - ungzips the data first!
 def fetch_s3(client, id):
     #print("fetch_s3")
     obj = client.get_object(Bucket=BUCKET, Key=id)
@@ -79,12 +83,13 @@ def get_lines(s3_client, k, j):
     
     wday, yday = date_to_features(obj, 1 - int(k == 'index.html'))
     #print("*" + str(len(lines)))
-        
+    
+    ret = []
     for i, line in enumerate(lines):
         #print("***\n" + line + "\n\n\n")
             
             
-        lines[i] = ( 
+        ret.append (( 
                         pat_url.search(line).group(),
                         pat_txt.sub("", line), 
                         wday,
@@ -92,8 +97,8 @@ def get_lines(s3_client, k, j):
                         i, 
                         j,
                         len(lines)
-                    )
-    return lines
+                    ))
+    return ret, lines
 
 
 def get_files(doc_keys=None):
@@ -112,7 +117,7 @@ def get_files(doc_keys=None):
             continue
         #print(k)
         
-        lines = get_lines(s3_client, k, j)
+        lines, orig = get_lines(s3_client, k, j)
         
         for line in lines:
             if line[0] in clicks:
@@ -125,7 +130,7 @@ def get_files(doc_keys=None):
     Y = [int(x in clicks) for x in url]
     
         
-    return Y, X, wday, yday, i, j, n
+    return Y, X, wday, yday, i, j, n, orig
         
     
 def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1000):
@@ -188,12 +193,13 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1000):
     return numpy.hstack((wday.T, yday.T, i.T, i_scaled.T, max_sim.T, v2)), tf, u
     
     
-def train(time_allowed=30, trials=None) :
+def train(time_allowed=30, trials=None, output="model.pickle") :
     import xgboost as xgb
+    import numpy
     from hyperopt import hp, tpe, Trials
     from hyperopt.fmin import fmin
     
-    Y, *R = get_files()
+    Y, *R, _ = get_files()
     X, tf, u = gen_features(*R)
     del R
     
@@ -240,15 +246,75 @@ def train(time_allowed=30, trials=None) :
     param.update(best)
     param['max_depth'] = int(param['max_depth']) #fixme
 
+    print("re-cv to find early stopping")
+    cv = xgb.cv(param, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=0)
+
+    #num_round = (r['test-auc-mean'] - r['test-auc-std']/2).idxmax()
+    num_round = (cv['test-auc-mean'] - cv['test-auc-std']/2 - numpy.linspace(0, cv.shape[0]*.0003, num=cv.shape[0]) ).idxmax();
     
-    result = xgb.cv(param, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=0)
+    print("final train")
+    model = xgb.train(param, dtrain, num_round)
+    
+    MODEL = (model, param, trials, tf, u)
+    
+    print("pickle to s3")
+    client = boto3.client('s3')
+    client.put_object(
+            Body=gzip.compress(pickle.dumps(MODEL)),
+            Bucket=BUCKET,
+            Key=output,
+            ContentType='application/python-pickle',
+            ContentEncoding='gzip' )
 
     
-    return result, param, trials, tf, u
+    #with open("model.pickle", "wb") as f:
+    #    pickle.dump(MODEL, f)
+    
+    return MODEL
     
     
+def score_index(model_key="model.pickle"):
+    import xgboost as xgb
+    import numpy
+
+    s3_client = boto3.client('s3')
+
+    print("fetching most recent model")
+    obj = s3_client.get_object(Bucket=BUCKET, Key=model_key)
+    MODEL1 = pickle.load(gzip.open(obj['Body']))
     
-    
+    r, p, t, tf, u = MODEL1
+
+    Y, *index, orig = get_files(['index.html'])
+    index[3] = [0 for _ in index[3]] # score as if all were in first slot.
+
+    X, _, _ = gen_features(*index, tf=tf, u=u)
+
+    # Remove links that were already clicked
+    print("Removing %d already clicked links" % sum(Y))
+    Y = numpy.array(Y)
+    X = xgb.DMatrix(X[Y == 0, :], Y[Y == 0])
+
+    yhat = r.predict(X)
+
+    # Five percent greedy-epsilon bandit
+    for i, _ in enumerate(yhat):
+        if numpy.random.uniform() < .05 :
+            yhat[i] = numpy.random.uniform()
+
+
+    lines = list(zip(*sorted(zip(-yhat, orig))))[1]    
+
+    body, _, = fetch_s3(s3_client, "index.html")
+    body = "".join(body.readlines())
+
+    d = re.search("(?<=<h3>).*(?=</h3>)", str(body)).group(0)
+
+    yesterdays_href = re.search('(?<=<a href=")[0-9a-f]*[.]html(?=">yesterday\'s news</a>)', body).group(0)
+
+    new_index = neal_news.build_new_index(lines, d, yesterdays_href)
+    neal_news.update_index(s3_client, new_index)
+
     
 
 def main(args):
