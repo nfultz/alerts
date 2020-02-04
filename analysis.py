@@ -318,12 +318,11 @@ def score_index(model_key="model.pickle"):
     
 
 def main(args):
-    Y, X, wday, yday, i, j, n = get_files()
-    print(len(X))
-    print(len(Y))
+    if args[0] == "train":
+        train()
+    elif args[0] == "serve":
+        score_index()
         
 if __name__ == "__main__":
     import sys
-    import os
-    os.environ['AWS_DEFAULT_REGION']='us-east-1'
     main(sys.argv)
