@@ -6,6 +6,7 @@ import datetime
 import io
 import gzip
 import time
+import re
 
 MSG_PREFIX = '(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) Method request body before transformations: '
 BUCKET = 'www.neal.news'
@@ -54,27 +55,207 @@ def get_docs_keys(client, oldest):
 
 
 def fetch_s3(client, id):
-    print("fetch_s3")
+    #print("fetch_s3")
     obj = client.get_object(Bucket=BUCKET, Key=id)
     f = io.StringIO(gzip.open(obj['Body']).read().decode('utf-8'))
-    return f
+    return f, obj
+
+def date_to_features(obj, delta=1):
+    import datetime
+    d = obj['LastModified']
+    d = d - datetime.timedelta(days=delta) # Modification - 1 day, bc old days are rotated when new one comes in 
+
+    return d.weekday(), d.timetuple().tm_yday
+
+pat_url = re.compile('https?://[^"]*')
+pat_txt = re.compile("</?[^>]*>")
+
+
+def get_lines(s3_client, k, j):
+    f, obj = fetch_s3(s3_client, k)
+    lines = f.readlines()
+    lines = map(str.strip, lines)
+    lines = [ line for line in lines if line.startswith("<div>") ]
+    
+    wday, yday = date_to_features(obj, 1 - int(k == 'index.html'))
+    #print("*" + str(len(lines)))
+        
+    for i, line in enumerate(lines):
+        #print("***\n" + line + "\n\n\n")
+            
+            
+        lines[i] = ( 
+                        pat_url.search(line).group(),
+                        pat_txt.sub("", line), 
+                        wday,
+                        yday,
+                        i, 
+                        j,
+                        len(lines)
+                    )
+    return lines
+
+
+def get_files(doc_keys=None):
+    clicks, first_ts =  get_logs()
+    print(first_ts)
+    print(len(clicks))
+    s3_client = boto3.client('s3')
+    if doc_keys is None:
+        doc_keys = get_docs_keys(s3_client, first_ts + datetime.timedelta(-1))
+    
+    X = list()
+    
+    for j, k in enumerate(doc_keys):
+        if k == 'favicon.ico':
+            print("skipping " + k)
+            continue
+        #print(k)
+        
+        lines = get_lines(s3_client, k, j)
+        
+        for line in lines:
+            if line[0] in clicks:
+                X = X + lines
+                break
+        else:
+            print('No clicks found in ' + k)
+    
+    url, X, wday, yday, i, j, n = zip(*X)
+    Y = [int(x in clicks) for x in url]
+    
+        
+    return Y, X, wday, yday, i, j, n
+        
+    
+def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1000):
+    from sklearn.feature_extraction import FeatureHasher
+    from sklearn.decomposition import TruncatedSVD
+    from scipy.spatial.distance import cosine
+
+    from collections import Counter
+    import numpy
+
+    from bert_embedding import BertEmbedding
+
+    import mxnet as mx
+
+    ctx = mx.gpu(0)
+    bert_embedding = BertEmbedding(ctx=ctx)
+    
+    result = bert_embedding(X)
+    
+    if tf is None:
+        tf = Counter()
+        for r in result:
+            tf.update(r[0])
+        
+    N = sum(tf.values())
+    
+    
+    h = FeatureHasher(n_features=n_features, input_type="string")
+    
+
+    def s_from_w(s):
+        words = s[0]
+        embedding = numpy.array(s[1])
+        embedding = numpy.concatenate((embedding, h.transform(words).toarray()), axis=1)
+        weight = numpy.array([1/(1+tf[x]/N)/len(words) for x in words])
+        return weight.dot(embedding)
+
+    SX = numpy.array([s_from_w(x) for x in result])
+    
+    if u is None:
+        svd = TruncatedSVD(n_components=1, n_iter=7, random_state=42)
+        svd.fit(SX)
+        u = svd.components_
+    
+    v2 = SX - SX.dot(u.transpose())*u
+    
+    wday = numpy.array(wday, ndmin=2)
+    yday = numpy.array(yday, ndmin=2)
+    
+    max_sim = wday * 0
+
+    for K, _ in enumerate(max_sim):
+        if i[K] > 0 :
+            max_sim[K] = max((1-cosine(SX[K,:], SX[K2,:]))**2 for K2 in range(K) if j[K] == j[K2])
+
+    i = numpy.array(i, ndmin=2)
+    i_scaled = i / numpy.array(n, ndmin=2)
+        
+            
+    return numpy.hstack((wday.T, yday.T, i.T, i_scaled.T, max_sim.T, v2)), tf, u
+    
+    
+def train(time_allowed=30, trials=None) :
+    import xgboost as xgb
+    from hyperopt import hp, tpe, Trials
+    from hyperopt.fmin import fmin
+    
+    Y, *R = get_files()
+    X = gen_features(*R)
+    del R
+    
+    dtrain = xgb.DMatrix(X[0], Y)
+    
+    if trials is None:
+        trials = Trials()
+    
+    
+    deadline = datetime.datetime.now() + datetime.timedelta(minutes=time_allowed)
+    param = {'max_depth':2, 'eta':.3, 'silent':1, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
+    num_round = 100
+    nfold = 7
+    
+    def objective(params):
+        params['max_depth'] = int(params['max_depth'])
+
+        params.update(param)
+
+        result = xgb.cv(params, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=0)
+
+        score = max(result['test-auc-mean'] - result['test-auc-std']/2)
+
+        return -score
+
+    space = {
+        'max_depth': hp.quniform('max_depth', 2, 12, 1),
+        'colsample_bytree': hp.uniform('colsample_bytree', 0.3, 1.0),
+        'gamma': hp.uniform('gamma', 0.01, 0.5),
+        'subsample': hp.uniform('subsample', .3, 1),
+        'scale_pos_weight' : hp.uniform('scale_pos_weight', .8, 20.0),
+        'eta': hp.uniform('eta', .01, .4),
+    }
+
+    
+    
+    while datetime.datetime.now() < deadline:
+            best = fmin(fn=objective,
+                space=space,
+                algo=tpe.suggest,
+                trials=trials,
+                max_evals=len(t.trials) + 20)
+
+    param.update(best)
+    param['max_depth'] = int(param['max_depth']) #fixme
+
+    
+    result = xgb.cv(param, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=0)
+
+    
+    return result, param, trials
+    
+    
+    
+    
+    
 
 def main(args):
-    Y, first_ts =  get_logs()
-#    print(Y)
-#    print(first_ts)
-    s3_client = boto3.client('s3')
-    X = get_docs_keys(s3_client, first_ts + datetime.timedelta(-1))
-
-    for k in X:
-        print(k)
-        f = fetch_s3(s3_client, k)
-        lines = f.readlines()
-        lines = map(str.strip, lines)
-        lines = [ line for line in lines if line.startswith("<div>") ]
-        print(lines, "\n\n\n\n\n")
-
-
+    Y, X, wday, yday, i, j, n = get_files()
+    print(len(X))
+    print(len(Y))
+        
 if __name__ == "__main__":
     import sys
     import os
