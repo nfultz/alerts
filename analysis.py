@@ -54,7 +54,7 @@ def get_docs_keys(client, oldest):
     listing = client.list_objects_v2(Bucket=BUCKET)
 
     for i in listing['Contents']:
-        if i['LastModified'] > oldest:
+        if i['LastModified'] > oldest and i['Key'].endswith('.html'):
             yield i['Key']
 
 # Different - ungzips the data first!
@@ -112,9 +112,6 @@ def get_files(doc_keys=None):
     X = list()
     
     for j, k in enumerate(doc_keys):
-        if k == 'favicon.ico':
-            print("skipping " + k)
-            continue
         #print(k)
         
         lines, orig = get_lines(s3_client, k, j)
