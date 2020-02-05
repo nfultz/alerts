@@ -318,9 +318,9 @@ def score_index(model_key="model.pickle"):
     
 
 def main(args):
-    if args[0] == "train":
+    if args[1] == "train":
         train()
-    elif args[0] == "serve":
+    elif args[1] == "serve":
         score_index()
         
 if __name__ == "__main__":
