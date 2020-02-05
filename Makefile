@@ -1,4 +1,4 @@
-.PHONY = manual  update install clean
+.PHONY = manual  update install clean docker
 
 export AWS_DEFAULT_REGION = us-east-1
 
@@ -27,3 +27,9 @@ news-lambda.zip : neal_news.py bs4/ soupsieve/
 
 clean :
 	rm -rf */ news-lambda.zip
+
+docker : Dockerfile analysis.py neal_news.py
+	$(aws ecr get-login --no-include-email --region us-east-1) && \
+	docker build -t neal-news . && \
+	docker tag neal-news:latest 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest
+	docker push 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest
