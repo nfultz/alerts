@@ -101,7 +101,7 @@ def get_lines(s3_client, k, j):
     return ret, lines
 
 
-def get_files(doc_keys=None):
+def get_files(doc_keys=None, drop=True):
     clicks, first_ts =  get_logs()
     print(first_ts)
     print(len(clicks))
@@ -121,7 +121,10 @@ def get_files(doc_keys=None):
                 X = X + lines
                 break
         else:
-            print('No clicks found in ' + k)
+            if not drop:
+                X = X + lines
+            else:
+                print('No clicks found in ' + k)
     
     url, X, wday, yday, i, j, n = zip(*X)
     Y = [int(x in clicks) for x in url]
@@ -190,7 +193,7 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1000):
     return numpy.hstack((wday.T, yday.T, i.T, i_scaled.T, max_sim.T, v2)), tf, u
     
     
-def train(time_allowed=30, trials=None, output="model.pickle") :
+def train(time_allowed=20, trials=None, output="model.pickle") :
     import xgboost as xgb
     import numpy
     from hyperopt import hp, tpe, Trials
@@ -238,7 +241,7 @@ def train(time_allowed=30, trials=None, output="model.pickle") :
                 space=space,
                 algo=tpe.suggest,
                 trials=trials,
-                max_evals=len(trials.trials) + 20)
+                max_evals=len(trials.trials) + 21)
 
     param.update(best)
     param['max_depth'] = int(param['max_depth']) #fixme
@@ -282,7 +285,7 @@ def score_index(model_key="model.pickle"):
     
     r, p, t, tf, u = MODEL1
 
-    Y, *index, orig = get_files(['index.html'])
+    Y, *index, orig = get_files(['index.html'], drop=False)
     index[3] = [0 for _ in index[3]] # score as if all were in first slot.
 
     X, _, _ = gen_features(*index, tf=tf, u=u)
@@ -314,12 +317,16 @@ def score_index(model_key="model.pickle"):
 
     
 
-def main(args):
-    if args[1] == "train":
+def main(news_mode):
+    if news_mode == "train":
         train()
-    elif args[1] == "serve":
+    elif news_mode == "score":
         score_index()
         
 if __name__ == "__main__":
-    import sys
-    main(sys.argv)
+    print("Starting analysis.py")
+    import json
+    with open('/opt/ml/input/config/hyperparameters.json') as f:
+        hyper = json.load(f)
+    print(hyper)
+    main(hyper.get("NEWS_MODE", "score"))

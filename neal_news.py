@@ -203,7 +203,73 @@ def lambda_handler(event, context):
     clean = build_new_index(items, dt, yesterday_href)
 
     update_index(client, clean)
+    sagemaker()
 
+def sagemaker():
+    client = boto3.client("sagemaker")
+    now = datetime.datetime.now()
+    
+    score_job = client.create_training_job(
+        TrainingJobName="neal-news-score-%d" % int(now.timestamp()),
+        AlgorithmSpecification={
+            'TrainingImage': '887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest',
+            'TrainingInputMode': 'File'
+        },
+        RoleArn='arn:aws:iam::887983324737:role/service-role/AmazonSageMaker-ExecutionRole-20200125T123071',
+        HyperParameters={
+            'NEWS_MODE': 'score'
+        },
+#        InputDataConfig=[
+#        ],
+        OutputDataConfig={
+            'S3OutputPath': 's3://njnmdummy2/'
+        },
+        ResourceConfig={
+            'InstanceType': 'ml.p2.xlarge',
+            'InstanceCount': 1,
+            'VolumeSizeInGB': 5,
+        },
+        StoppingCondition={
+            'MaxRuntimeInSeconds': 600,
+            'MaxWaitTimeInSeconds':1600
+        },
+        EnableNetworkIsolation=False,
+        EnableManagedSpotTraining=True,
+    )
+    
+    if now.weekday() != 0:
+        return 0
+    
+    train_job = client.create_training_job(
+        TrainingJobName="neal-news-train-%d" % int(now.timestamp()),
+        AlgorithmSpecification={
+            'TrainingImage': '887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest',
+            'TrainingInputMode': 'File'
+        },
+        RoleArn='arn:aws:iam::887983324737:role/service-role/AmazonSageMaker-ExecutionRole-20200125T123071',
+#        InputDataConfig=[
+#        ],
+        HyperParameters={
+            'NEWS_MODE': 'train'
+        },
+        OutputDataConfig={
+            'S3OutputPath': 's3://njnmdummy2/'
+        },
+        ResourceConfig={
+            'InstanceType': 'ml.p2.xlarge',
+            'InstanceCount': 1,
+            'VolumeSizeInGB': 5,
+        },
+        StoppingCondition={
+            'MaxRuntimeInSeconds': 3600,
+            'MaxWaitTimeInSeconds':4600
+        },
+        EnableNetworkIsolation=False,
+        EnableManagedSpotTraining=True,
+    )
+    
+    
+    
 if __name__ == '__main__' :
     import sys
     with open(sys.argv[1]) as f:
