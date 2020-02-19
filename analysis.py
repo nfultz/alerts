@@ -322,6 +322,10 @@ def main(news_mode):
         train()
     elif news_mode == "score":
         score_index()
+    elif news_mode == "score_update":
+        score_index()
+        if datetime.datetime.now().weekday() == 0:
+            train()
         
 if __name__ == "__main__":
     print("Starting analysis.py")
