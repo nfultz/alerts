@@ -10,3 +10,9 @@ This is a small project to aggregate news feeds for my personal use.
   2. Lambda function fetches email, extracts content,
      apply's template, pushes HTML back to S3.
   3. S3 serves static site.
+
+## Item Ranking
+
+Feed items are scored using a model trained from historical click data.
+This computation is done via sagemaker training jobs.
+
