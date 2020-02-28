@@ -1,4 +1,4 @@
-.PHONY = manual  update install clean docker
+.PHONY = manual  update install clean docker favicon
 
 export AWS_DEFAULT_REGION = us-east-1
 
@@ -33,3 +33,6 @@ docker : Dockerfile analysis.py neal_news.py
 	docker build -t neal-news . && \
 	docker tag neal-news:latest 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest && \
 	docker push 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest
+
+favicon :
+	aws s3 cp favicon.ico s3://www.neal.news/favicon.ico
