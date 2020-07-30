@@ -11,6 +11,31 @@ neal.news is hosted on AWS. A rough outline is:
      applys template, pushes HTML back to S3, and queues a scoring job.
   3. S3 serves static site.
 
+### Manually firing a lambda job from AWS UI
+
+* Go to create test event
+* Fill in the `messageId` below - it is the only field actually used, the other mail headers will be pulled from the file with that ID on S3
+```
+{
+  "Records": [
+    {
+      "eventSource": "aws:ses",
+      "eventVersion": "1.0",
+      "ses": {
+        "mail": {
+          "timestamp": "2020-07-30T14:20:54.877Z",
+          "source": "3RdciXxQKAH4iqqingcngtvu-pqtgrn0iqqing.eqo@alerts.bounces.google.com",
+          "messageId": "qlkjb610bfq4c4nlm99u2plkh9li82uo4iu2s401",
+          "destination": [
+            "foo@neal.news"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
 ## Item Ranking / Scoring
 
   1. Clicked items are logged back to CloudWatch events (via an API Gateway).
