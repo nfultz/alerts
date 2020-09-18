@@ -209,7 +209,7 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
         trials = Trials()
     
     
-    param = {'max_depth':2, 'eta':.3, 'silent':1, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
+    param = {'max_depth':2, 'eta':.3, 'verbosity':0, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
     num_round = 100
     nfold = 7
     
@@ -296,7 +296,7 @@ def score_index(model_key="model.pickle"):
     yhat = r.predict(X)
 
     for i, _ in enumerate(yhat):
-        orig[i] = orig[i].replace("<div>", f"<div data-score={1}>" ,1)
+        orig[i] = orig[i].replace("<div>", f"<div data-score={yhat[i]}>" ,1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
             yhat[i] = numpy.random.uniform()
