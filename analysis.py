@@ -79,7 +79,7 @@ def get_lines(s3_client, k, j):
     f, obj = fetch_s3(s3_client, k)
     lines = f.readlines()
     lines = map(str.strip, lines)
-    lines = [ line for line in lines if line.startswith("<div ") ]
+    lines = [ line for line in lines if line.startswith("<div") ]
     
     wday, yday = date_to_features(obj, 1 - int(k == 'index.html'))
     #print("*" + str(len(lines)))
@@ -295,6 +295,8 @@ def score_index(model_key="model.pickle"):
 
     yhat = r.predict(X)
 
+    bandit_max = min(1, max(yhat) * (yhat.shape[0] + 1) / yhat.shape[0]  )
+    
     for i, _ in enumerate(yhat):
         orig[i] = orig[i].replace("<div ", f"<div data-score={yhat[i]}" ,1)
         # Five percent greedy-epsilon bandit
