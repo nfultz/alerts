@@ -296,7 +296,7 @@ def score_index(model_key="model.pickle"):
     yhat = r.predict(X)
 
     for i, _ in enumerate(yhat):
-        orig[i] = orig[i].replace("<div ", f"<div data-score={yhat[i]}>" ,1)
+        orig[i] = orig[i].replace("<div ", f"<div data-score={yhat[i]}" ,1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
             yhat[i] = numpy.random.uniform()
