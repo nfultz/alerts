@@ -79,7 +79,7 @@ def get_lines(s3_client, k, j):
     f, obj = fetch_s3(s3_client, k)
     lines = f.readlines()
     lines = map(str.strip, lines)
-    lines = [ line for line in lines if line.startswith("<div>") ]
+    lines = [ line for line in lines if line.startswith("<div ") ]
     
     wday, yday = date_to_features(obj, 1 - int(k == 'index.html'))
     #print("*" + str(len(lines)))
