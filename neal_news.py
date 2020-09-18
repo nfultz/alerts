@@ -151,7 +151,7 @@ def build_new_index(items, d, yesterday_href):
         req.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         req.send(a.href)
     }}
-    document.onmouseup = e => e.which == 2 && document.onclick(e)
+    document.onmouseup = e => e.which != 2 || document.onclick(e)
     </script>
     </body>
     </html>
