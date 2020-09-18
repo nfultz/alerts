@@ -298,7 +298,7 @@ def score_index(model_key="model.pickle"):
     bandit_max = min(1, max(yhat) * (yhat.shape[0] + 1) / yhat.shape[0]  )
     
     for i, _ in enumerate(yhat):
-        orig[i] = orig[i].replace("<div ", f"<div data-score={yhat[i]}" ,1)
+        orig[i] = orig[i].replace("<div", f"<div data-score={yhat[i]}" ,1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
             yhat[i] = numpy.random.uniform()
