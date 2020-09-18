@@ -133,7 +133,7 @@ def get_files(doc_keys=None, drop=True):
     return Y, X, wday, yday, i, j, n, orig
         
     
-def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1000):
+def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     from sklearn.feature_extraction import FeatureHasher
     from sklearn.decomposition import TruncatedSVD
     from scipy.spatial.distance import cosine
@@ -171,7 +171,7 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1000):
     SX = numpy.array([s_from_w(x) for x in result])
     
     if u is None:
-        svd = TruncatedSVD(n_components=1, n_iter=7, random_state=42)
+        svd = TruncatedSVD(n_components=1, n_iter=8, random_state=42)
         svd.fit(SX)
         u = svd.components_
     
@@ -209,7 +209,6 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
         trials = Trials()
     
     
-    deadline = datetime.datetime.now() + datetime.timedelta(minutes=time_allowed)
     param = {'max_depth':2, 'eta':.3, 'silent':1, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
     num_round = 100
     nfold = 7
@@ -236,12 +235,11 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
 
     
     
-    while datetime.datetime.now() < deadline:
-            best = fmin(fn=objective,
+    best = fmin(fn=objective,
                 space=space,
                 algo=tpe.suggest,
                 trials=trials,
-                max_evals=len(trials.trials) + 21)
+                max_evals=len(trials.trials) + 25)
 
     param.update(best)
     param['max_depth'] = int(param['max_depth']) #fixme
@@ -297,13 +295,15 @@ def score_index(model_key="model.pickle"):
 
     yhat = r.predict(X)
 
-    # Five percent greedy-epsilon bandit
     for i, _ in enumerate(yhat):
+        orig[i] = orig[i].replace("<div>", f"<div data-score={1}>" ,1)
+        # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
             yhat[i] = numpy.random.uniform()
+            orig[i] = orig[i].replace("<div", "<div data-bandit=1", 1)
 
 
-    lines = list(zip(*sorted(zip(-yhat, orig))))[1]    
+    scores, lines = list(zip(*sorted(zip(-yhat, orig))))    
 
     body, _, = fetch_s3(s3_client, "index.html")
     body = "".join(body.readlines())
