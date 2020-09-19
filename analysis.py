@@ -301,7 +301,7 @@ def score_index(model_key="model.pickle"):
         orig[i] = orig[i].replace("<div", f"<div data-score={yhat[i]}" ,1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
-            yhat[i] = numpy.random.uniform()
+            yhat[i] = numpy.random.uniform() * bandit_max
             orig[i] = orig[i].replace("<div", "<div data-bandit=1", 1)
 
 
