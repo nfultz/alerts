@@ -136,7 +136,7 @@ def get_files(doc_keys=None, drop=True):
 def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     from sklearn.feature_extraction import FeatureHasher
     from sklearn.decomposition import TruncatedSVD
-    from scipy.spatial.distance import cosine
+    from scipy.spatial.distance import cosine, cdist
 
     from collections import Counter
     import numpy
@@ -182,11 +182,17 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     
     max_sim = wday * 0
 
+    i = numpy.array(i)
+    j = numpy.array(j)
+    
+    
     for K, _ in enumerate(max_sim):
         if i[K] > 0 :
-            max_sim[K] = max((1-cosine(SX[K,:], SX[K2,:]))**2 for K2 in range(K) if j[K] == j[K2])
+            max_sim[K] = (1-cdist(SX[[K],:], SX[ (j == j[K]) & (i < i[K]), :], metric='cosine')**2).max()
 
+            
     i = numpy.array(i, ndmin=2)
+
     i_scaled = i / numpy.array(n, ndmin=2)
         
             
@@ -271,7 +277,7 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
     return MODEL
     
     
-def score_index(model_key="model.pickle"):
+def score_index(model_key="model.pickle", save=True):
     import xgboost as xgb
     import numpy
 
@@ -291,21 +297,37 @@ def score_index(model_key="model.pickle"):
     # Remove links that were already clicked
     print("Removing %d already clicked links" % sum(Y))
     Y = numpy.array(Y)
+    orig2 = [o for i,o in enumerate(orig) if Y[i] == 0]
     X = xgb.DMatrix(X[Y == 0, :], Y[Y == 0])
 
     yhat = r.predict(X)
 
-    bandit_max = min(1, max(yhat) * (yhat.shape[0] + 1) / yhat.shape[0]  )
     
     for i, _ in enumerate(yhat):
-        orig[i] = orig[i].replace("<div", f"<div data-score={yhat[i]}" ,1)
+        orig2[i] = orig2[i].replace("<div", f"<div data-score0={yhat[i]} " ,1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
-            yhat[i] = numpy.random.uniform() * bandit_max
-            orig[i] = orig[i].replace("<div", "<div data-bandit=1", 1)
+            yhat[i] = numpy.random.choice(yhat)
+            #orig2[i] = orig2[i].replace("<div", "<div data-bandit=1", 1)
+
+            
+    # Rescore with positioning
+    index2 = Y * 9999
+    index2[Y == 0] =  numpy.argsort(yhat) # rescore per actual position.
+    index[3] = index2
+    X, _, _ = gen_features(*index, tf=tf, u=u)
+    X = xgb.DMatrix(X[Y == 0, :], Y[Y == 0])
+    yhat2 = r.predict(X)
+
+    for i, _ in enumerate(yhat):
+        orig2[i] = orig2[i].replace("<div", f"<div data-score1={yhat2[i]} " ,1)
+        # Five percent greedy-epsilon bandit
+        if numpy.random.uniform() < .05 :
+            yhat2[i] = numpy.random.choice(yhat2)
+            orig2[i] = orig2[i].replace("<div", "<div data-bandit=1 ", 1)
 
 
-    scores, lines = list(zip(*sorted(zip(-yhat, orig))))    
+    scores, lines = list(zip(*sorted(zip(-(yhat+yhat2)/2, orig2))))    
 
     body, _, = fetch_s3(s3_client, "index.html")
     body = "".join(body.readlines())
@@ -315,7 +337,9 @@ def score_index(model_key="model.pickle"):
     yesterdays_href = re.search('(?<=<a href=")[0-9a-f]*[.]html(?=">yesterday\'s news</a>)', body).group(0)
 
     new_index = neal_news.build_new_index(lines, d, yesterdays_href)
-    neal_news.update_index(s3_client, new_index)
+    
+    if save:
+        neal_news.update_index(s3_client, new_index)
 
     
 
