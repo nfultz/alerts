@@ -93,8 +93,14 @@ def extract_items(soup):
                    for tr in soup.find_all("tr", itemtype="http://schema.org/Article")
                    if tr.div.a))
 
+    items = map(clean_item,
+               ((td.div.a, td.div.find_next("div").find_next("div"))
+                   for td in soup.find_all("td")
+                   if td.div and td.div.div)
+            )
+
     uniq_href = set()
-    uniq = []
+    uniq, i = [], -1
 
     for i, item in enumerate(items):
         href, item = item
