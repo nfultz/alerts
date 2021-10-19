@@ -56,48 +56,43 @@ def unwrap_link(link):
     return {"href":  queries['url'][0], "target":"_blank" }
 
 def clean_item(item):
-    link, desc = item
+    link, div = item
     link.attrs = unwrap_link(link['href'])
-    link.span.unwrap()
+    link.parent.unwrap()
     if link.contents[0]  == ' ':
         del link.contents[0]
     if link.contents[-1] == ' ':
         del link.contents[-1]
 
-    #change publisher div to em
-    desc.div.a.span.unwrap()
-    desc.div.a.unwrap()
-    text = "".join(desc.div.contents).strip()
-    desc.div.clear()
-    desc.div.string = text
-    desc.div.name = 'em'
+    publisher = div.find("div", {"itemprop":"publisher"})
+    publisher.attrs = {}
+    publisher.name = 'em'
 
-    # strip all formatting
-    desc.attrs = {}
+    #strip all formatting
+    desc = div.find("div", {"itemprop":"description"})    
     for t in desc.descendants: t.attrs = {}
 
-    desc.insert(0, link)
+    
+    # strip all share buttons etc
+    div.clear()
+    div.insert(0, link)
+    div.insert(1, publisher)
+    div.insert(2, desc)
 
     for site in PAYWALLED:
         if site in link.attrs["href"]:
             desc.attrs["class"] = "paywall"
 
-    return link.attrs["href"], desc
+    return link.attrs["href"], div
 
 
 def extract_items(soup):
     print("extract_items")
 
     items = map(clean_item,
-               ((tr.div.a, tr.div.div.div)
-                   for tr in soup.find_all("tr", itemtype="http://schema.org/Article")
-                   if tr.div.a))
-
-    items = map(clean_item,
-               ((td.div.a, td.div.find_next("div").find_next("div"))
-                   for td in soup.find_all("td")
-                   if td.div and td.div.div)
-            )
+                ((a, a.parent.parent) for a in soup.find_all("a",{"itemprop":"url"}))
+                )
+            
 
     uniq_href = set()
     uniq, i = [], -1
