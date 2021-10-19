@@ -58,18 +58,20 @@ def unwrap_link(link):
 def clean_item(item):
     link, div = item
     link.attrs = unwrap_link(link['href'])
+    link.span.unwrap()
     link.parent.unwrap()
     if link.contents[0]  == ' ':
         del link.contents[0]
     if link.contents[-1] == ' ':
         del link.contents[-1]
 
-    publisher = div.find("div", {"itemprop":"publisher"})
+    publisher = div.find("div", {"itemprop":"publisher"}).span
     publisher.attrs = {}
     publisher.name = 'em'
 
-    #strip all formatting
-    desc = div.find("div", {"itemprop":"description"})    
+    #strip all formatting from description
+    desc = div.find("div", {"itemprop":"description"})
+    desc.attrs = {}
     for t in desc.descendants: t.attrs = {}
 
     
