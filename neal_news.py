@@ -53,7 +53,7 @@ def parse_email(f,dump=False):
 def unwrap_link(link):
     url = urllib.parse.urlparse(link)
     queries = urllib.parse.parse_qs(url.query)
-    return {"href":  queries['url'][0], "target":"_blank" }
+    return {"href":  queries['url'][0]}
 
 def clean_item(item):
     link, div = item
@@ -139,6 +139,7 @@ def build_new_index(items, d, yesterday_href):
         content: '🔒'
         }}
     </style>
+    <base target="_blank">
     </head>
     <body>
     <h1>neal.news</h1>
@@ -233,7 +234,7 @@ def sagemaker():
             'S3OutputPath': 's3://njnmdummy2/'
         },
         ResourceConfig={
-            'InstanceType': 'ml.p2.xlarge',
+            'InstanceType': 'ml.g4dn.xlarge',
             'InstanceCount': 1,
             'VolumeSizeInGB': 5,
         },

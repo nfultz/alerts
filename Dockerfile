@@ -1,13 +1,31 @@
-FROM sagemaker-mxnet:1.6.0-gpu-py3
+FROM nvidia/cuda:11.6.0-cudnn8-devel-ubuntu18.04
+
+RUN apt-get update && apt-get  -y install python3.8 python3.8-dev python3-pip
+#RUN apt-get install -y  wget gfortran libcublas-11-6 libcublas-dev-11-6 libatlas-base-dev
 
 
-RUN pip install  bert-embedding --no-deps
-RUN pip install xgboost
-RUN pip install hyperopt
-RUN pip install bs4 boto3
+RUN python3.8 -m pip install --upgrade pip setuptools wheel 
+
+#RUN wget https://github.com/Kitware/CMake/releases/download/v3.26.0-rc2/cmake-3.26.0-rc2-linux-x86_64.tar.gz -O - | tar xz -C /opt && ln -s /opt/cmake*/bin/cmake /usr/local/bin/cmake
+
+RUN python3.8 -m pip install numpy==1.20.0
+
+RUN python3.8 -m pip install mxnet-cu116  bert-embedding gluonnlp --no-deps
+
+
+#RUN python3.8 -m pip install Cython pybind11 xgboost pythran
+
+RUN python3.8 -m pip install xgboost
+RUN python3.8 -m pip install hyperopt
+RUN python3.8 -m pip install bs4 boto3
+
+RUN python3.8 -m pip install requests packaging
+
 
 COPY *.py /usr/local/bin/
 #docker tag sagemaker-mxnet:1.6.0-gpu-py3 887983324737.dkr.ecr.us-east-1.amazonaws.com/sagemaker-mxnet:1.6.0-gpu-py3
 
-ENV AWS_DEFAULT_REGION=us-east-1
-ENTRYPOINT ["python3", "/usr/local/bin/analysis.py"]
+RUN python3.8 /usr/local/bin/download-model.py
+#
+#ENV AWS_DEFAULT_REGION=us-east-1
+#ENTRYPOINT ["python3.8", "/usr/local/bin/analysis.py"]

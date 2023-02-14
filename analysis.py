@@ -261,14 +261,15 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
     
     MODEL = (model, param, trials, tf, u)
     
-    print("pickle to s3")
-    client = boto3.client('s3')
-    client.put_object(
-            Body=gzip.compress(pickle.dumps(MODEL)),
-            Bucket=BUCKET,
-            Key=output,
-            ContentType='application/python-pickle',
-            ContentEncoding='gzip' )
+    if output:
+        print("pickle to s3")
+        client = boto3.client('s3')
+        client.put_object(
+                Body=gzip.compress(pickle.dumps(MODEL)),
+                Bucket=BUCKET,
+                Key=output,
+                ContentType='application/python-pickle',
+                ContentEncoding='gzip' )
 
     
     #with open("model.pickle", "wb") as f:
