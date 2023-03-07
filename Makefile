@@ -12,7 +12,7 @@ update : news-lambda.zip
 install : news-lambda.zip
 	aws lambda delete-function --function-name neal_news_lambda || true
 	aws lambda create-function --function-name neal_news_lambda                                  \
-	                           --runtime python3.6                                               \
+	                           --runtime python3.8                                               \
 	                           --handler neal_news.lambda_handler                                \
 	                           --timeout 60                                                      \
 	                           --role arn:aws:iam::887983324737:role/neal_news_lambda_permission \

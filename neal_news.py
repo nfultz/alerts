@@ -13,22 +13,6 @@ BUCKET = 'www.neal.news'
 
 INCOMING = 'neal.news.testing'
 
-PAYWALLED = {
-        'ft.com',
-        'wsj.com',
-        'thetimes.co.uk',
-        'straitstimes.com',
-        'heraldscotland.com',
-        'americansongwriter.com',
-        'www.theday.com',
-        'www.independent.ie',
-        'news.bloomberglaw.com'
-        }
-
-SPAM = {
-        'insiderfinancial.net',
-        'wellstonjournal.com'
-        }
 
 def parse_email(f,dump=False):
     print("parse_email")
@@ -81,9 +65,6 @@ def clean_item(item):
     div.insert(1, publisher)
     div.insert(2, desc)
 
-    for site in PAYWALLED:
-        if site in link.attrs["href"]:
-            desc.attrs["class"] = "paywall"
 
     return link.attrs["href"], div
 
@@ -134,9 +115,6 @@ def build_new_index(items, d, yesterday_href):
         }}
     a {{
         text-decoration: none
-        }}
-    div.paywall > em:after {{
-        content: '🔒'
         }}
     </style>
     <base target="_blank">
