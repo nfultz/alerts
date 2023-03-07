@@ -126,7 +126,7 @@ def build_new_index(items, d, yesterday_href):
     <a href="{yesterday_href}">yesterday's news</a>
     <script>
     document.onclick = function(e) {{
-        a = e.path.find((x) => x.href)
+        a = e.composedPath().find((x) => x.href)
         if(!a) return;
         req = new XMLHttpRequest();
         req.open("POST", "https://jt5a7bev0m.execute-api.us-east-1.amazonaws.com/beta/")
