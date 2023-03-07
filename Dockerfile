@@ -18,6 +18,8 @@ RUN python3.8 -m pip install mxnet-cu116  bert-embedding gluonnlp --no-deps
 RUN python3.8 -m pip install xgboost
 RUN python3.8 -m pip install hyperopt
 RUN python3.8 -m pip install bs4 boto3
+RUN python3.8 -m pip install scikit-learn
+
 
 RUN python3.8 -m pip install requests packaging
 
@@ -27,5 +29,5 @@ COPY *.py /usr/local/bin/
 
 RUN python3.8 /usr/local/bin/download-model.py
 #
-#ENV AWS_DEFAULT_REGION=us-east-1
-#ENTRYPOINT ["python3.8", "/usr/local/bin/analysis.py"]
+ENV AWS_DEFAULT_REGION=us-east-1
+ENTRYPOINT ["python3.8", "/usr/local/bin/analysis.py"]

@@ -164,7 +164,7 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     def s_from_w(s):
         words = s[0]
         embedding = numpy.array(s[1])
-        embedding = numpy.concatenate((embedding, h.transform(words).toarray()), axis=1)
+        embedding = numpy.concatenate((embedding, h.transform([w] for w in words).toarray()), axis=1)
         weight = numpy.array([1/(1+tf[x]/N)/len(words) for x in words])
         return weight.dot(embedding)
 
