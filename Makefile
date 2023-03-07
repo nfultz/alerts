@@ -20,7 +20,7 @@ install : news-lambda.zip
 	echo "Don't forget to update SES to use new lambda"
 
 %/ :
-	pip3 install --system $* -t .
+	pip3 install $* -t .
 
 news-lambda.zip : neal_news.py bs4/ soupsieve/
 	zip -r $@ $?
