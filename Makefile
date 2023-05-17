@@ -30,7 +30,7 @@ clean :
 
 docker : Dockerfile analysis.py neal_news.py
 	$$(aws ecr get-login --no-include-email --region us-east-1) && \
-	docker build -t --squash neal-news . && \
+	docker build --squash -t neal-news . && \
 	docker tag neal-news:latest 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest && \
 	docker push 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest
 

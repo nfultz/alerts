@@ -14,6 +14,13 @@ with zipfile.ZipFile(io.BytesIO(f.read())) as myzip:
     myzip.extract('book_corpus_wiki_en_uncased-a6607397.vocab', '/root/.mxnet/models/')
 
 print("download params")
-f = urllib.request.urlopen("https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/gluon/models/bert_12_768_12_book_corpus_wiki_en_uncased-75cc780f.zip")
+# f = urllib.request.urlopen("https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/gluon/models/bert_24_1024_16_book_corpus_wiki_en_uncased-75cc780f.zip")
+# with zipfile.ZipFile(io.BytesIO(f.read())) as myzip:
+#     myzip.extract('bert_12_768_12_book_corpus_wiki_en_uncased-75cc780f.params', '/root/.mxnet/models/')
+    
+    
+b1024 = "https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/gluon/models/bert_24_1024_16_book_corpus_wiki_en_uncased-24551e14.zip"    
+
+f = urllib.request.urlopen(b1024)
 with zipfile.ZipFile(io.BytesIO(f.read())) as myzip:
-    myzip.extract('bert_12_768_12_book_corpus_wiki_en_uncased-75cc780f.params', '/root/.mxnet/models/')
+    myzip.extract('bert_24_1024_16_book_corpus_wiki_en_uncased-24551e14.params', '/root/.mxnet/models/')
