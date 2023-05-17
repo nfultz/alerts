@@ -10,7 +10,7 @@ RUN python3.8 -m pip install --upgrade pip setuptools wheel
 
 RUN python3.8 -m pip install numpy==1.20.0
 
-RUN python3.8 -m pip install mxnet-cu116  bert-embedding gluonnlp --no-deps
+RUN python3.8 -m pip install mxnet-cu116==1.9.1  gluonnlp --no-deps
 
 
 #RUN python3.8 -m pip install Cython pybind11 xgboost pythran

@@ -11,6 +11,7 @@ import re
 
 import neal_news
 
+from bs4 import BeautifulSoup
 
 MSG_PREFIX = '(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) Method request body before transformations: '
 BUCKET = 'www.neal.news'
@@ -77,9 +78,13 @@ pat_txt = re.compile("</?[^>]*>")
 
 def get_lines(s3_client, k, j):
     f, obj = fetch_s3(s3_client, k)
-    lines = f.readlines()
-    lines = map(str.strip, lines)
-    lines = [ line for line in lines if line.startswith("<div") ]
+#    lines = f.readlines()
+#    lines = map(str.strip, lines)
+#    lines = [ line for line in lines if line.startswith("<div") ]
+
+    soup = BeautifulSoup(f, 'html.parser')
+    lines = lines = soup.select("body > div")
+
     
     wday, yday = date_to_features(obj, 1 - int(k == 'index.html'))
     #print("*" + str(len(lines)))
@@ -90,8 +95,8 @@ def get_lines(s3_client, k, j):
             
             
         ret.append (( 
-                        pat_url.search(line).group(),
-                        pat_txt.sub("", line), 
+                        line.a.attrs['href'],
+                        line, 
                         wday,
                         yday,
                         i, 
@@ -133,6 +138,94 @@ def get_files(doc_keys=None, drop=True):
     return Y, X, wday, yday, i, j, n, orig
         
     
+def gen_embedding(lines):
+    import numpy
+    import gluonnlp as nlp;
+    import mxnet as mx;
+
+    ctx = mx.gpu()
+
+    model, vocab = nlp.model.get_model('bert_12_768_12',
+                                       dataset_name='book_corpus_wiki_en_uncased',
+                                       ctx=ctx, use_classifier=False, use_decoder=False)
+    tokenizer = nlp.data.BERTTokenizer(vocab, lower=True)
+    transform = nlp.data.BERTSentenceTransform(tokenizer, max_seq_length=256, pair=False, pad=False)
+    
+    return [gen_embeddings_line(line, model, tokenizer, transform, ctx) for line in lines]
+
+
+def gen_embeddings_line(l, model, tokenizer, transform, ctx):
+    import numpy
+    import mxnet as mx
+
+    tags = []
+    sentence = ""
+
+    for _, i in enumerate(l.find_all(string=True)):
+        toks = tokenizer(str(i))
+        tags.append((toks, list(x.name for x in i.parents)))
+        sentence = sentence + " " + str(i)
+
+
+    sample = transform([sentence]);
+    words, valid_len, segments = mx.nd.array([sample[0]]).as_in_context(ctx), mx.nd.array([sample[1]]).as_in_context(ctx), mx.nd.array([sample[2]]).as_in_context(ctx);
+    seq_encoding, cls_encoding = model(words, segments, valid_len);
+    
+    ### Post processing to deal with BPE
+    t_iter = iter(tags)
+
+    out = list()
+    bpe_cnt = -9
+
+    toks, parent, t_i = (*next(t_iter), 0)
+    for i in range(int(valid_len.asscalar())):
+
+        token_id = words[0][i].asscalar()
+        if token_id == 1:
+            # [PAD] token, sequence is finished.
+            break
+        if (token_id in (2, 3)):
+            # [CLS], [SEP]
+            #print("skip")
+            continue
+
+
+
+        while(len(toks) <= t_i):
+            toks, parent, t_i = (*next(t_iter), 0)
+            #print("chug")
+        #print(t_i, i, len(toks), toks[t_i])
+
+        if toks[t_i].startswith('##'):
+            #print(toks[t_i - 1], toks[t_i])
+            out[-1][0] += toks[t_i][2:]
+            out[-1][1] += seq_encoding[0,i,:].asnumpy()
+            bpe_cnt += 1
+        else:
+            if bpe_cnt > 1:
+                out[-1][1] /= bpe_cnt
+                #print(bpe_cnt, out[-1][0])
+            bpe_cnt = 1
+
+            P = [
+                1 if 'a' in parent else 0,
+                1 if 'b' in parent else 0,
+                1 if 'em' in parent else 0,
+            ]
+
+
+            out.append([ toks[t_i], seq_encoding[0,i,:].asnumpy(), P])
+
+
+
+        t_i = t_i + 1
+
+
+    TOKENS, X, P = zip(*out)
+    X = numpy.vstack(X)
+    P = numpy.array(P)
+    return TOKENS, X, P
+    
 def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     from sklearn.feature_extraction import FeatureHasher
     from sklearn.decomposition import TruncatedSVD
@@ -141,14 +234,16 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     from collections import Counter
     import numpy
 
-    from bert_embedding import BertEmbedding
+#     from bert_embedding import BertEmbedding
 
-    import mxnet as mx
+#     import mxnet as mx
 
-    ctx = mx.gpu(0)
-    bert_embedding = BertEmbedding(ctx=ctx)
+#     ctx = mx.gpu(0)
+#     bert_embedding = BertEmbedding(ctx=ctx)
     
-    result = bert_embedding(X)
+#     result = bert_embedding(X)
+
+    result = gen_embedding(X)
     
     if tf is None:
         tf = Counter()
@@ -215,7 +310,7 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
         trials = Trials()
     
     
-    param = {'max_depth':2, 'eta':.3, 'verbosity':0, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
+    param = {'verbosity':0, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
     num_round = 100
     nfold = 7
     
@@ -226,7 +321,8 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
 
         result = xgb.cv(params, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=0)
 
-        score = max(result['test-auc-mean'] - result['test-auc-std']/2)
+        # is this no longer an array? Can be list if nan is present?
+        score = max(m - s/2 for m,s in zip(result['test-auc-mean'], result['test-auc-std']))
 
         return -score
 
