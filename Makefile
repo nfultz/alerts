@@ -28,11 +28,13 @@ news-lambda.zip : neal_news.py bs4/ soupsieve/
 clean :
 	rm -rf */ news-lambda.zip
 
-docker : Dockerfile analysis.py neal_news.py
+docker : Dockerfile entry.sh analysis.py download-model.py gen_features.py neal_news.py score.py train1.py train.py
 	$$(aws ecr get-login --no-include-email --region us-east-1) && \
 	docker build --squash -t neal-news . && \
 	docker tag neal-news:latest 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest && \
 	docker push 887983324737.dkr.ecr.us-east-1.amazonaws.com/neal-news:latest
+
+
 
 favicon :
 	aws s3 cp favicon.ico s3://www.neal.news/favicon.ico

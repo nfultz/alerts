@@ -1,0 +1,3 @@
+import analysis
+
+analysis.train()

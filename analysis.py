@@ -13,6 +13,11 @@ import neal_news
 
 from bs4 import BeautifulSoup
 
+import pandas as pd
+import xgboost as xgb
+import numpy
+
+
 MSG_PREFIX = '(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) Method request body before transformations: '
 BUCKET = 'www.neal.news'
 
@@ -92,7 +97,9 @@ def get_lines(s3_client, k, j):
     ret = []
     for i, line in enumerate(lines):
         # print("***\n" + line + "\n\n\n")
-
+        #line = BeautifulSoup(str(line), 'html.parser')
+        # ^^^ Perhaps Needed to break connection with parent document, allows pickling.
+        # OW pickle will go line -> parent -> 500 lines -> parent etc
 
         ret.append (( 
                         line.a.attrs['href'],
@@ -137,7 +144,23 @@ def get_files(doc_keys=None, drop=True):
     return Y, X, wday, yday, i, j, n, orig
 
 
-def gen_embedding(lines, model, tokenizer, transform, ctx):
+def gen_embedding(lines):
+
+    import gluonnlp as nlp
+    import mxnet as mx
+
+    print("Loading BERT to gpu")
+
+    ctx = mx.gpu()
+
+    model, vocab = nlp.model.get_model('bert_24_1024_16',
+                                       dataset_name='book_corpus_wiki_en_uncased',
+                                       ctx=ctx, use_classifier=False, use_decoder=False)
+    tokenizer = nlp.data.BERTTokenizer(vocab, lower=True)
+    transform = nlp.data.BERTSentenceTransform(tokenizer, max_seq_length=128, pair=False, pad=False)
+
+    print("Creating BERT embeddings")
+
     return [gen_embeddings_line(line, model, tokenizer, transform, ctx) for line in lines]
 
 
@@ -202,8 +225,7 @@ def gen_embeddings_line(line, model, tokenizer, transform, ctx):
                 1 if 'em' in parent else 0,
             ]
 
-
-            out.append([ toks[t_i], seq_encoding[i,:], P])
+            out.append([toks[t_i], seq_encoding[i,:], P])
 
         t_i = t_i + 1
 
@@ -212,45 +234,16 @@ def gen_embeddings_line(line, model, tokenizer, transform, ctx):
     P = numpy.array(P)
     return TOKENS, X, P
 
+
 def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     from sklearn.feature_extraction import FeatureHasher
     from sklearn.decomposition import TruncatedSVD
     from scipy.spatial.distance import cosine, cdist
 
     from collections import Counter
-    import numpy
 
-#     from bert_embedding import BertEmbedding
+    result = gen_embedding(X)
 
-#     import mxnet as mx
-
-#     ctx = mx.gpu(0)
-#     bert_embedding = BertEmbedding(ctx=ctx)
-    
-#     result = bert_embedding(X)
-
-    import gluonnlp as nlp;
-    import mxnet as mx;
-
-    print("Loading BERT to gpu")
-    
-    ctx = mx.gpu()
-
-    model, vocab = nlp.model.get_model('bert_24_1024_16',
-                                       dataset_name='book_corpus_wiki_en_uncased',
-                                       ctx=ctx, use_classifier=False, use_decoder=False)
-    tokenizer = nlp.data.BERTTokenizer(vocab, lower=True)
-    transform = nlp.data.BERTSentenceTransform(tokenizer, max_seq_length=128, pair=False, pad=False)
-
-    print("Creating BERT embeddings")
-
-    result = gen_embedding(X, model, tokenizer, transform, ctx)
-    
-    
-    
-    del model, tokenizer, transform
-    ctx.empty_cache()
-    
     if tf is None:
         print("Term Freq:", len(result))
 
@@ -301,47 +294,95 @@ def gen_features(X, wday, yday, i, j, n, tf=None, u=None, n_features=1400):
     return numpy.hstack((wday.T, yday.T, i.T, i_scaled.T, max_sim.T, v2)), tf, u
 
 
-def train(time_allowed=20, trials=None, output="model.pickle") :
-    import xgboost as xgb
-    import numpy
-    from hyperopt import hp, tpe, Trials
-    from hyperopt.fmin import fmin
+def ar_m_to_log_m(Ex, Vx):
+    # Method of Moments estimates for log-normal distribution => mode of distribution
+    mu = 2*numpy.log(Ex) - .5*numpy.log(Vx + Ex*Ex)
+    sigma2 = numpy.log1p(Vx/Ex/Ex)
+    mode = numpy.exp(mu - sigma2)
+    return mode
 
-    Y, *R, _ = get_files()
-    X, tf, u = gen_features(*R)
-    del R
 
-    print(f"{X.shape} cases")
-    
-    dtrain = xgb.DMatrix(X, Y)
+# Default params eg verbosity, objective function, gpu settings
+param = {
+    'verbosity': 0,
+    'objective': 'binary:logistic',
+    'tree_method': 'gpu_hist',
+    "predictor": 'gpu_predictor'
+}
 
-    if trials is None:
-        trials = Trials()
+def objective(params):
+    from hyperopt import STATUS_OK, STATUS_FAIL
 
-    param = {'verbosity':0, 'objective':'binary:logistic', 'tree_method':'gpu_hist', "predictor":'gpu_predictor'}
-    num_round = 128
-    #nfold = 7
+    CV_EARLY_STOPPING = 16
+    NUM_ROUND = 150
 
-    def ar_m_to_log_m(Ex, Vx):
-        mu = 2*numpy.log(Ex) - .5*numpy.log(Vx + Ex*Ex)
-        sigma2 = numpy.log1p(Vx/Ex/Ex)
-        mode = numpy.exp(mu - sigma2)
-        return mode
-    
-    def objective(params):
-        params['max_depth'] = int(params['max_depth'])
+    try:
 
-        params.update(param)
+        # print("loading data from /tmp")
+        dtrain = xgb.DMatrix("/tmp/dmatrix")
+
+        # print("get params")
+
+        # params = q.get()
+
         seed = int(params.pop('seed'))
         nfold = int(params.pop('nfold'))
 
-
-        result = xgb.cv(params, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=seed)
+        # print("begin cv")
+        result = xgb.cv(params, dtrain, NUM_ROUND, nfold=nfold, metrics={'auc'}, seed=seed, early_stopping_rounds=CV_EARLY_STOPPING)
 
         # is this no longer an array? Can be list if nan is present?
-        score = max(ar_m_to_log_m(m, s*s) for m,s in zip(result['test-auc-mean'], result['test-auc-std']))
+        scores = [ar_m_to_log_m(m, s*s) for m, s in zip(result['test-auc-mean'], result['test-auc-std'])]
+        rounds_indx, score = max(enumerate(scores), key=lambda x: x[1])
 
-        return -score
+        ret = {'loss': -score, 'nrounds': rounds_indx + 1, 'status': STATUS_OK}
+    except xgb.core.XGBoostError as e:
+        ret = {'status': STATUS_FAIL, 'error': str(e)}
+    return(ret)
+
+
+HP_PICKLE = "/tmp/hp.pkl"
+OBJ_PICKLE = "/tmp/obj.pkl"
+
+def objective_wrap(params):
+
+    import subprocess, sys
+    
+    params['max_depth'] = int(params['max_depth'])
+    # print(params)
+    params.update(param)
+
+    pd.to_pickle(params, HP_PICKLE)
+    
+    subprocess.run(["python3.8", "train1.py"])
+    
+    ret = pd.read_pickle(OBJ_PICKLE)
+
+    return(ret)
+
+FEATURE_PICKLE = "/tmp/features"
+def train(trials=None, output="model.pickle"):
+
+    from hyperopt import hp, tpe, Trials
+    from hyperopt.fmin import fmin
+
+#    Y, *R, _ = get_files()
+#    X, tf, u = gen_features(*R)
+#    del R
+
+    # print("loading from /tmp/features")
+    Y, X, tf, u = pd.read_pickle(FEATURE_PICKLE)
+#    Y, X, tf, u = gen_features_wrap()
+
+
+    print(f"{X.shape} cases")
+
+    # dtrain = xgb.DMatrix(X, Y)
+
+    xgb.DMatrix(X, Y).save_binary("/tmp/dmatrix")
+
+    if trials is None:
+        trials = Trials()
 
     space = {
         'max_depth': hp.quniform('max_depth', 2, 10, 1),
@@ -351,37 +392,26 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
         'scale_pos_weight': hp.uniform('scale_pos_weight', .8, 20.0),
         'eta': hp.uniform('eta', .01, .4),
         'seed': hp.randint('seed', 4),
-        'nfold': hp.quniform('nfold', 5,8,1),
+        'nfold': hp.quniform('nfold', 5, 8, 1)
     }
 
-
-
-    best = fmin(fn=objective,
+    best = fmin(fn=objective_wrap,
                 space=space,
                 algo=tpe.suggest,
                 trials=trials,
                 max_evals=len(trials.trials) + 25)
 
-    param.update(best)
-    param['max_depth'] = int(param['max_depth']) #fixme
-    seed = int(param.pop('seed')) #fixme
-    nfold = int(param.pop('nfold')) #fixme
+    best.update(param)
+    best['max_depth'] = int(best['max_depth'])  # fixme
+    best.pop('seed')   # fixme
+    best.pop('nfold')  # fixme
 
-    
-    print("re-cv to find early stopping")
-    cv = xgb.cv(param, dtrain, num_round, nfold=nfold, metrics={'auc'}, seed=seed)
-
-    #num_round = (r['test-auc-mean'] - r['test-auc-std']/2).idxmax()
-    
-    
-    num_round = numpy.array([ar_m_to_log_m(m, s*s) for m,s in zip(cv['test-auc-mean'], cv['test-auc-std'])])
-    num_round = num_round - numpy.linspace(0, num_round.shape[0]*.0003, num=num_round.shape[0])
-    num_round = num_round.argmax() + 1
+    num_round = trials.best_trial["result"]["nrounds"]
 
     print(f"final train with {num_round}")
-    model = xgb.train(param, dtrain, num_round)
+    model = xgb.train(best, xgb.DMatrix("/tmp/dmatrix"), num_round)
 
-    MODEL = (model, param, trials, tf, u)
+    MODEL = (model, best, trials, tf, u)
 
     if output:
         print("pickle to s3")
@@ -393,16 +423,13 @@ def train(time_allowed=20, trials=None, output="model.pickle") :
                 ContentType='application/python-pickle',
                 ContentEncoding='gzip' )
 
-
-    #with open("model.pickle", "wb") as f:
-    #    pickle.dump(MODEL, f)
+    # with open("model.pickle", "wb") as f:
+    #     pickle.dump(MODEL, f)
 
     return MODEL
 
 
 def score_index(model_key="model.pickle", save=True):
-    import xgboost as xgb
-    import numpy
 
     s3_client = boto3.client('s3')
 
@@ -420,28 +447,28 @@ def score_index(model_key="model.pickle", save=True):
     # Remove links that were already clicked
     print("Removing %d already clicked links" % sum(Y))
     Y = numpy.array(Y)
-    orig2 = [o for i,o in enumerate(orig) if Y[i] == 0]
+    orig2 = [o for i, o in enumerate(orig) if Y[i] == 0]
     X = xgb.DMatrix(X[Y == 0, :], Y[Y == 0])
 
     yhat = r.predict(X)
 
     for i, _ in enumerate(yhat):
-        orig2[i] = orig2[i].replace("<div", f"<div data-score0={yhat[i]} " ,1)
+        orig2[i] = orig2[i].replace("<div", f"<div data-score0={yhat[i]} ", 1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
             yhat[i] = numpy.random.choice(yhat)
-            #orig2[i] = orig2[i].replace("<div", "<div data-bandit=1", 1)
+            # orig2[i] = orig2[i].replace("<div", "<div data-bandit=1", 1)
 
     # Rescore with positioning
     index2 = Y * 9999
-    index2[Y == 0] =  numpy.argsort(yhat) # rescore per actual position.
+    index2[Y == 0] = numpy.argsort(yhat)  # rescore per actual position.
     index[3] = index2
     X, _, _ = gen_features(*index, tf=tf, u=u)
     X = xgb.DMatrix(X[Y == 0, :], Y[Y == 0])
     yhat2 = r.predict(X)
 
     for i, _ in enumerate(yhat):
-        orig2[i] = orig2[i].replace("<div", f"<div data-score1={yhat2[i]} " ,1)
+        orig2[i] = orig2[i].replace("<div", f"<div data-score1={yhat2[i]} ", 1)
         # Five percent greedy-epsilon bandit
         if numpy.random.uniform() < .05 :
             yhat2[i] = numpy.random.choice(yhat2)
@@ -462,7 +489,6 @@ def score_index(model_key="model.pickle", save=True):
         neal_news.update_index(s3_client, new_index)
 
 
-
 def main(news_mode):
     if news_mode == "train":
         train()
@@ -472,7 +498,8 @@ def main(news_mode):
         score_index()
         if datetime.datetime.now().weekday() == 0:
             train()
-        
+
+
 if __name__ == "__main__":
     print("Starting analysis.py")
     import json
